@@ -1,5 +1,7 @@
+import { User } from '@/models/User';
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
 
 const providers = [
   CredentialsProvider({
@@ -12,7 +14,20 @@ const providers = [
       // Runs first on sign in
       // Returns User object or null
 
-      return null;
+      if (!credentials?.email || !credentials?.password) return null;
+
+      const user = await User.findOne({ email: credentials.email });
+      if (!user) return null;
+
+      const isValid = await bcrypt.compare(credentials.password, user.password);
+      if (!isValid) return null;
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        permissions: user.permissions,
+      };
     },
   }),
 ];
@@ -26,10 +41,13 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       // Runs after authorize() and on every token refresh
-      // Returns a JWT token
+      // Returns a JWT token or undefined
 
       if (user) {
         token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.permissions = user.permissions;
       }
 
       return token;
@@ -38,24 +56,25 @@ export const authOptions: NextAuthOptions = {
       // Runs after jwt()
       // Returns a Session object or undefined
 
-      // TODO: update using database
+      const user = await User.findById(token.id);
 
-      if (session.user) {
-        session.user.id = token.id as string;
+      if (user) {
+        session.user = {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          permissions: user.permissions,
+        };
+      } else {
+        session.user = {
+          id: token.id,
+          email: token.email,
+          name: token.name,
+          permissions: [],
+        };
       }
+
       return session;
-    },
-    async signIn(params) {
-      // Runs on sign in
-      // Returns true or false
-
-      return true;
-    },
-    async redirect({ url, baseUrl }) {
-      // Runs after session() on sign in
-      // Returns a URL to redirect the user to
-
-      return baseUrl;
     },
   },
 };
